@@ -78,6 +78,12 @@ namespace Microsoft.Xna.Framework.Content
         {
             lock (ContentManagerLock)
             {
+#if USE_GAMETASK
+                //Initialize the filesystem background thread
+                if (_fileSystemBackgroundThread == null)
+                    _fileSystemBackgroundThread = new BackgroundThread(100);
+#endif
+
                 // Check if the list contains this content manager already. Also take
                 // the opportunity to prune the list of any finalized content managers.
                 bool contains = false;
@@ -106,6 +112,13 @@ namespace Microsoft.Xna.Framework.Content
                     if (!contentRef.IsAlive || ReferenceEquals(contentRef.Target, contentManager))
                         ContentManagers.RemoveAt(i);
                 }
+
+#if USE_GAMETASK
+                //if no more ContentManager alive, dispose the filesystem background thread 
+                if (ContentManagers.Count == 0)
+                    _fileSystemBackgroundThread.Dispose();
+#endif
+
             }
         }
 
@@ -271,7 +284,7 @@ namespace Microsoft.Xna.Framework.Content
                 if (Path.IsPathRooted(assetPath))                
                     stream = File.OpenRead(assetPath);                
                 else
-#endif                
+#endif
                 stream = TitleContainer.OpenStream(assetPath);
 #if ANDROID
                 // Read the asset into memory in one go. This results in a ~50% reduction

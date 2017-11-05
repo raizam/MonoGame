@@ -273,6 +273,7 @@
     </Compile>
     <Compile Include="GameRunBehavior.cs" />
     <Compile Include="GameServiceContainer.cs" />
+    <Compile Include="GameTask.cs" />
     <Compile Include="GameTime.cs" />
     <Compile Include="GameUpdateRequiredException.cs" />
     <Compile Include="GameWindow.cs">
@@ -420,6 +421,7 @@
     <Compile Include="Content\ContentExtensions.cs" />
     <Compile Include="Content\ContentLoadException.cs" />
     <Compile Include="Content\ContentManager.cs" />
+    <Compile Include="Content\ContentManagerAsync.cs" />
     <Compile Include="Content\ContentReader.cs" />
     <Compile Include="Content\ContentReaders\AlphaTestEffectReader.cs" />
     <Compile Include="Content\ContentReaders\ArrayReader.cs" />

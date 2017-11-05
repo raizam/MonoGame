@@ -139,9 +139,6 @@ namespace Microsoft.Xna.Framework.Content
             //send the FileSystem read operation to the fileSystem thread
             return _fileSystemBackgroundThread.Execute(() =>
             {
-
-                System.Threading.Thread.Sleep(2000);
-
                 //~~Executed in Background thread~~
                 Stream assetStream = OpenStream(assetName);
 

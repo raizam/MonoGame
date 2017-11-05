@@ -71,7 +71,8 @@ namespace Microsoft.Xna.Framework
 #if USE_GAMETASK
             //making the game IBackgroundThreadConsumer interface availlable as a Service
             //so any internal or external component can implement Background thread synced with the main thread.
-            _services.AddService<IGameTaskConsumer>(_backgroundThreadConsumer);
+            _gameTaskConsumer = new BackgroundThreadConsumer();
+            _services.AddService<IGameTaskConsumer>(_gameTaskConsumer);
 #endif
             _content = new ContentManager(_services);
 
@@ -654,7 +655,7 @@ namespace Microsoft.Xna.Framework
 #if USE_GAMETASK
                 //BackgroundThreads that have finished tasks have enqueued callbacks in this IBackgroundConsumer
                 //This call triggers GameTask continuations 
-                _backgroundThreadConsumer.ProcessGameTaskContinuations();
+                _gameTaskConsumer.ProcessGameTaskContinuations(ref gameTime);
 #endif
                 //Update
                 Update(gameTime);
@@ -1040,21 +1041,31 @@ namespace Microsoft.Xna.Framework
 
 #if USE_GAMETASK
 
-        private BackgroundThreadConsumer _backgroundThreadConsumer;
+        private BackgroundThreadConsumer _gameTaskConsumer;
 
         private class BackgroundThreadConsumer : IGameTaskConsumer
         {
-            internal void ProcessGameTaskContinuations()
+            long _currentTime = 1;
+
+            internal void ProcessGameTaskContinuations(ref GameTime time)
             {
-                Action action;
+                _currentTime = time.TotalGameTime.Ticks;
+                Action<long> action;
                 while (_actionQueue.TryDequeue(out action))
-                    action();
+                    action(_currentTime);
             }
 
-            public void EnqueueGameTaskContinuationAction(Action action) => _actionQueue.Enqueue(action);
+     
+            Func<TimeSpan> IGameTaskConsumer.GetDurationFunc()
+            {
+                var start = _currentTime;
+                return () => TimeSpan.FromTicks(this._currentTime - start);
+            }
+
+            void IGameTaskConsumer.EnqueueGameTaskContinuations(Action<long> action) => _actionQueue.Enqueue(action);
 
 
-            private System.Collections.Concurrent.ConcurrentQueue<Action> _actionQueue = new System.Collections.Concurrent.ConcurrentQueue<Action>();
+            private System.Collections.Concurrent.ConcurrentQueue<Action<long>> _actionQueue = new System.Collections.Concurrent.ConcurrentQueue<Action<long>>();
         }
 #endif
     }

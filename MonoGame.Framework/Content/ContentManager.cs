@@ -81,7 +81,7 @@ namespace Microsoft.Xna.Framework.Content
 #if USE_GAMETASK
                 //Initialize the filesystem background thread
                 if (_fileSystemBackgroundThread == null)
-                    _fileSystemBackgroundThread = new BackgroundThread(100);
+                    _fileSystemBackgroundThread = new BackgroundThread(contentManager.serviceProvider , 100);
 #endif
 
                 // Check if the list contains this content manager already. Also take
@@ -115,8 +115,11 @@ namespace Microsoft.Xna.Framework.Content
 
 #if USE_GAMETASK
                 //if no more ContentManager alive, dispose the filesystem background thread 
-                if (ContentManagers.Count == 0)
+                if (_fileSystemBackgroundThread != null && ContentManagers.Count == 0)
+                {
                     _fileSystemBackgroundThread.Dispose();
+                    _fileSystemBackgroundThread = null;
+                }  
 #endif
 
             }

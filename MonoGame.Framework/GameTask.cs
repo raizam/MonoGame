@@ -10,74 +10,87 @@ namespace Microsoft.Xna.Framework
 #if USE_GAMETASK
     public class GameTask
     {
-        internal GameTask(Task task)
+        internal GameTask(Task task, Func<TimeSpan> durationFunc)
         {
-            this.task = task;
+            this.innerTask = task;
+            this.durationFunc = durationFunc;
         }
 
-        readonly internal protected Task task;
+        internal protected readonly Task innerTask;
+        protected readonly Func<TimeSpan> durationFunc;
+        private TimeSpan finalDuration = TimeSpan.Zero;
+
+        protected void StopWatch()
+        {
+            //if (finalDuration.Equals(TimeSpan.Zero))
+            //    finalDuration = durationFunc();
+        }
 
         public GameTask Then(Action<GameTask> then)
         {
-            return new GameTask(task.ContinueWith(t => then(this), TaskContinuationOptions.ExecuteSynchronously));
+            return new GameTask(innerTask.ContinueWith(t => { StopWatch(); then(this); }, TaskContinuationOptions.ExecuteSynchronously), durationFunc);
         }
 
         public GameTask<R> Then<R>(Func<GameTask, R> then)
         {
-            return new GameTask<R>(task.ContinueWith(t => then(this), TaskContinuationOptions.ExecuteSynchronously));
+            return new GameTask<R>(innerTask.ContinueWith(t => { StopWatch(); return then(this); }, TaskContinuationOptions.ExecuteSynchronously), durationFunc);
         }
 
-        public AggregateException Exception => task.Exception;
-        public bool IsFaulted => task.IsFaulted;
+        public AggregateException Exception => innerTask.Exception;
+        public bool IsFaulted => innerTask.IsFaulted;
 
+        public TimeSpan TotalDuration => durationFunc();
 
         public TaskAwaiter GetAwaiter()
         {
-            return task.GetAwaiter();
+            return innerTask.GetAwaiter();
         }
 
         public static GameTask<T> FromResult<T>(T result)
         {
-            return new GameTask<T>(Task.FromResult(result));
+            return new GameTask<T>(Task.FromResult(result), () => TimeSpan.Zero);
         }
     }
 
     public class GameTask<T> : GameTask
     {
-        internal GameTask(Task<T> task) : base(task) { }
+        internal GameTask(Task<T> task, Func<TimeSpan> durationFunc) : base(task, durationFunc) { }
 
-        public GameTask Then(Action<GameTask<T>> toExecuteInGameThread)
+        public GameTask Then(Action<GameTask<T>> then)
         {
-            return new GameTask(((Task<T>)task).ContinueWith(t => toExecuteInGameThread(this), TaskContinuationOptions.ExecuteSynchronously));
+            return new GameTask(((Task<T>)innerTask).ContinueWith(t => { StopWatch(); then(this); }, TaskContinuationOptions.ExecuteSynchronously), durationFunc);
         }
 
-        public GameTask<R> Then<R>(Func<GameTask<T>, R> toExecuteInGameThread)
+        public GameTask<R> Then<R>(Func<GameTask<T>, R> then)
         {
-            return new GameTask<R>(((Task<T>)task).ContinueWith(t => toExecuteInGameThread(this), TaskContinuationOptions.ExecuteSynchronously));
+            return new GameTask<R>(((Task<T>)innerTask).ContinueWith(t => { StopWatch(); return then(this); }, TaskContinuationOptions.ExecuteSynchronously), durationFunc);
         }
 
-        public T Result => ((Task<T>)task).Result;
+        public T Result => ((Task<T>)innerTask).Result;
 
         public new TaskAwaiter<T> GetAwaiter()
         {
-            return ((Task<T>)task).GetAwaiter();
+            return ((Task<T>)innerTask).GetAwaiter();
         }
     }
 
     public interface IGameTaskConsumer
     {
-        void EnqueueGameTaskContinuationAction(Action action);
+        Func<TimeSpan> GetDurationFunc();
+        void EnqueueGameTaskContinuations(Action<long> action);
     }
 
     public class BackgroundThread : IDisposable
     {
+        private readonly IGameTaskConsumer consumer;
         private Task thread;
         private volatile bool exit = false;
 
         private System.Collections.Concurrent.ConcurrentQueue<Action> actionQueue = new System.Collections.Concurrent.ConcurrentQueue<Action>();
 
-        public BackgroundThread(int idleDelayMs = 100)
+        public BackgroundThread(IServiceProvider serviceProvider, int idleDelayMs = 100)
         {
+            this.consumer = (IGameTaskConsumer)serviceProvider.GetService(typeof(IGameTaskConsumer));
             this.thread = Task.Factory.StartNew(() =>
             {
                 Thread.CurrentThread.Name = this.GetType().Name;
@@ -92,45 +105,45 @@ namespace Microsoft.Xna.Framework
             }, TaskCreationOptions.LongRunning);
         }
 
-        public GameTask Execute(Action backgroundAction, IGameTaskConsumer consumer)
+        public GameTask Execute(Action backgroundAction)
         {
             TaskCompletionSource<bool> taskCompletionSource = new TaskCompletionSource<bool>(TaskCreationOptions.None);
-
+            var tsk = new GameTask(taskCompletionSource.Task, consumer.GetDurationFunc());
             actionQueue.Enqueue(() =>
             {
                 try
                 {
                     backgroundAction();
-                    consumer.EnqueueGameTaskContinuationAction(() => taskCompletionSource.SetResult(true));
+                    consumer.EnqueueGameTaskContinuations((currentTime) => taskCompletionSource.SetResult(true));
                 }
                 catch (Exception ex)
                 {
-                    consumer.EnqueueGameTaskContinuationAction(() => taskCompletionSource.SetException(ex));
+                    consumer.EnqueueGameTaskContinuations((currentTime) => taskCompletionSource.SetException(ex));
                 }
             });
 
-            return new GameTask(taskCompletionSource.Task);
+            return tsk;
         }
 
 
-        public GameTask<T> Execute<T>(Func<T> backgroundFunc, IGameTaskConsumer consumer)
+        public GameTask<T> Execute<T>(Func<T> backgroundFunc)
         {
             TaskCompletionSource<T> taskCompletionSource = new TaskCompletionSource<T>(TaskCreationOptions.None);
-
+            var tsk = new GameTask<T>(taskCompletionSource.Task, consumer.GetDurationFunc());
             actionQueue.Enqueue(() =>
             {
                 try
                 {
                     T result = backgroundFunc();
-                    consumer.EnqueueGameTaskContinuationAction(() => taskCompletionSource.SetResult(result));
+                    consumer.EnqueueGameTaskContinuations((currentTime) => taskCompletionSource.SetResult(result));
                 }
                 catch (Exception ex)
                 {
-                    consumer.EnqueueGameTaskContinuationAction(() => taskCompletionSource.SetException(ex));
+                    consumer.EnqueueGameTaskContinuations((currentTime) => taskCompletionSource.SetException(ex));
                 }
             });
 
-            return new GameTask<T>(taskCompletionSource.Task);
+            return tsk;
         }
 
 

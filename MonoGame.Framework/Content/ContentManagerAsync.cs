@@ -140,6 +140,8 @@ namespace Microsoft.Xna.Framework.Content
             return _fileSystemBackgroundThread.Execute(() =>
             {
 
+                System.Threading.Thread.Sleep(2000);
+
                 //~~Executed in Background thread~~
                 Stream assetStream = OpenStream(assetName);
 
@@ -155,7 +157,7 @@ namespace Microsoft.Xna.Framework.Content
                 assetStream.Dispose();
                 return memStream;
 
-            }, _backgroundThreadConsumer);
+            });
         }
     }
 #endif //USE_GAMETASK
